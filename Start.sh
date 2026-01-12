@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script: Start.sh
-# Purpose: Restore packages from ~/pkglist on Steam Deck (SteamOS Holo)
+# Purpose: Restore packages from ~/pkglist on Steam Deck (SteamOS Holo) with pre/post hooks
 # Author: System Admin
 # Date: $(date +%Y-%m-%d)
 # Warning: This script will install many packages. Ensure you trust the source of pkglist.
@@ -14,7 +14,9 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-PKG_LIST_FILE="$HOME/pkglist"
+PKG_LIST_FILE="./pkglist"
+PRE_HOOK_SCRIPT="./Hooks/PreHook.sh"
+POST_HOOK_SCRIPT="./Hooks/PostHook.sh"
 PARU_FLAGS="--skipreview --needed --noconfirm"
 
 # Variables
@@ -77,6 +79,49 @@ enable_readonly_mode() {
         # Continue anyway since we don't want to leave the system in a vulnerable state
     else
         print_status "SteamOS readonly mode re-enabled"
+    fi
+}
+
+# Execute pre-installation hook if exists
+execute_pre_hook() {
+    if [[ -f "$PRE_HOOK_SCRIPT" ]]; then
+        print_status "Executing pre-installation hook: $PRE_HOOK_SCRIPT"
+        
+        if [[ ! -x "$PRE_HOOK_SCRIPT" ]]; then
+            print_warning "Pre-hook script is not executable, making it executable..."
+            chmod +x "$PRE_HOOK_SCRIPT"
+        fi
+        
+        if ! "$PRE_HOOK_SCRIPT"; then
+            print_error "Pre-installation hook failed. Aborting installation."
+            enable_readonly_mode  # Re-enable readonly mode before exiting
+            exit 1
+        else
+            print_status "Pre-installation hook executed successfully"
+        fi
+    else
+        print_status "No pre-installation hook found at $PRE_HOOK_SCRIPT"
+    fi
+}
+
+# Execute post-installation hook if exists
+execute_post_hook() {
+    if [[ -f "$POST_HOOK_SCRIPT" ]]; then
+        print_status "Executing post-installation hook: $POST_HOOK_SCRIPT"
+        
+        if [[ ! -x "$POST_HOOK_SCRIPT" ]]; then
+            print_warning "Post-hook script is not executable, making it executable..."
+            chmod +x "$POST_HOOK_SCRIPT"
+        fi
+        
+        if ! "$POST_HOOK_SCRIPT"; then
+            print_error "Post-installation hook failed, but installation has completed."
+            return 1
+        else
+            print_status "Post-installation hook executed successfully"
+        fi
+    else
+        print_status "No post-installation hook found at $POST_HOOK_SCRIPT"
     fi
 }
 
@@ -175,7 +220,7 @@ verify_installation() {
 
 # Main execution
 main() {
-    print_status "Steam Deck Package Restorer"
+    print_status "Steam Deck Package Restorer with Hooks"
     echo "====================================="
     
     check_steamdeck
@@ -190,6 +235,12 @@ main() {
     fi
     echo ""
     
+    # Show hook information
+    echo "Hook scripts:"
+    echo "  Pre-hook: $([ -f "$PRE_HOOK_SCRIPT" ] && echo "✓ Found" || echo "✗ Not found")"
+    echo "  Post-hook: $([ -f "$POST_HOOK_SCRIPT" ] && echo "✓ Found" || echo "✗ Not found")"
+    echo ""
+    
     ask_proxy
     
     echo ""
@@ -199,6 +250,8 @@ main() {
     echo "- Source file: $PKG_LIST_FILE"
     echo "- Total packages to install: $pkg_count"
     echo "- Using proxy: $([ "$USE_PROXY" = true ] && echo "Yes" || echo "No")"
+    echo "- Pre-installation hook: $([ -f "$PRE_HOOK_SCRIPT" ] && echo "Yes" || echo "No")"
+    echo "- Post-installation hook: $([ -f "$POST_HOOK_SCRIPT" ] && echo "Yes" || echo "No")"
     echo ""
     
     read -p "Proceed with installation? This may take a long time. (y/N): " -n 1 -r
@@ -213,9 +266,15 @@ main() {
     
     configure_proxy
     
+    # Execute pre-installation hook
+    execute_pre_hook
+    
     print_status "Starting package installation..."
     install_packages
     verify_installation
+    
+    # Execute post-installation hook
+    execute_post_hook
     
     # Re-enable readonly mode after installation
     enable_readonly_mode
