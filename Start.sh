@@ -59,6 +59,27 @@ check_requirements() {
     fi
 }
 
+# Disable SteamOS readonly mode
+disable_readonly_mode() {
+    print_status "Disabling SteamOS readonly mode..."
+    if ! sudo steamos-readonly disable; then
+        print_error "Failed to disable SteamOS readonly mode"
+        exit 1
+    fi
+    print_status "SteamOS readonly mode disabled"
+}
+
+# Enable SteamOS readonly mode
+enable_readonly_mode() {
+    print_status "Re-enabling SteamOS readonly mode..."
+    if ! sudo steamos-readonly enable; then
+        print_error "Failed to re-enable SteamOS readonly mode"
+        # Continue anyway since we don't want to leave the system in a vulnerable state
+    else
+        print_status "SteamOS readonly mode re-enabled"
+    fi
+}
+
 # Ask user if they want to use proxy
 ask_proxy() {
     echo "====================================="
@@ -187,11 +208,17 @@ main() {
         exit 0
     fi
     
+    # Disable readonly mode before installing packages
+    disable_readonly_mode
+    
     configure_proxy
     
     print_status "Starting package installation..."
     install_packages
     verify_installation
+    
+    # Re-enable readonly mode after installation
+    enable_readonly_mode
     
     print_status "Package restoration completed!"
     print_status "Please restart your Steam Deck for all changes to take effect."
