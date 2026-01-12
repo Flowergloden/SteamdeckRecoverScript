@@ -11,6 +11,7 @@ set -euo pipefail
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
@@ -32,6 +33,10 @@ print_warning() {
 
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+print_skip() {
+    echo -e "${BLUE}[SKIP]${NC} $1"
 }
 
 # Check if running on Steam Deck
@@ -93,24 +98,46 @@ configure_proxy() {
     fi
 }
 
+# Check if package is already installed
+is_package_installed() {
+    local package="$1"
+    # Try pacman first for official packages
+    if pacman -Q "$package" &>/dev/null; then
+        return 0
+    fi
+    # Then try paru for AUR packages
+    if paru -Q "$package" &>/dev/null; then
+        return 0
+    fi
+    return 1
+}
+
 # Install packages from the list
 install_packages() {
     print_status "Reading package list from $PKG_LIST_FILE"
     
     local total_packages=$(wc -l < "$PKG_LIST_FILE")
-    print_status "Found $total_packages packages to install"
+    print_status "Found $total_packages packages to process"
     
     # Read packages into array
     mapfile -t packages < "$PKG_LIST_FILE"
     
-    # Install packages in batches to handle potential errors
+    # Initialize counters
     local success_count=0
+    local skip_count=0
     local fail_count=0
     
     for i in "${!packages[@]}"; do
         local package="${packages[$i]}"
         # Skip empty lines
         [[ -z "$package" ]] && continue
+        
+        # Check if package is already installed before attempting to install
+        if is_package_installed "$package"; then
+            print_skip "Package already installed, skipping: $package ($((i+1))/$total_packages)"
+            ((skip_count++))
+            continue
+        fi
         
         print_status "Installing package ($((i+1))/$total_packages): $package"
         
@@ -125,8 +152,9 @@ install_packages() {
     
     print_status "Installation summary:"
     print_status "  Successfully installed: $success_count"
+    print_status "  Already installed (skipped): $skip_count"
     print_status "  Failed to install: $fail_count"
-    print_status "  Total processed: $((success_count + fail_count))"
+    print_status "  Total processed: $((success_count + skip_count + fail_count))"
 }
 
 # Verify installed packages
@@ -134,12 +162,23 @@ verify_installation() {
     print_status "Verifying installed packages..."
     
     local missing_packages=()
+    local existing_count=0
+    
     while IFS= read -r package; do
         [[ -z "$package" ]] && continue
-        if ! pacman -Q "$package" &>/dev/null; then
+        if is_package_installed "$package"; then
+            ((existing_count++))
+        else
             missing_packages+=("$package")
         fi
     done < "$PKG_LIST_FILE"
+    
+    local total_packages=$(wc -l < "$PKG_LIST_FILE")
+    
+    print_status "Verification summary:"
+    print_status "  Found in system: $existing_count"
+    print_status "  Missing from system: ${#missing_packages[@]}"
+    print_status "  Total packages in list: $total_packages"
     
     if [[ ${#missing_packages[@]} -eq 0 ]]; then
         print_status "All packages verified successfully"
@@ -148,7 +187,7 @@ verify_installation() {
         for pkg in "${missing_packages[@]}"; do
             print_warning "  - $pkg"
         done
-        print_warning "These packages may require manual installation"
+        print_warning "These packages may require manual installation or are unavailable"
     fi
 }
 
@@ -176,7 +215,7 @@ main() {
     echo "Package Installation Summary"
     echo "====================================="
     echo "- Source file: $PKG_LIST_FILE"
-    echo "- Total packages to install: $pkg_count"
+    echo "- Total packages to process: $pkg_count"
     echo "- Using proxy: $([ "$USE_PROXY" = true ] && echo "Yes" || echo "No")"
     echo ""
     
