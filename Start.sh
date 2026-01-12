@@ -1,0 +1,203 @@
+#!/bin/bash
+# Script: Start.sh
+# Purpose: Restore packages from ~/pkglist on Steam Deck (SteamOS Holo)
+# Author: System Admin
+# Date: $(date +%Y-%m-%d)
+# Warning: This script will install many packages. Ensure you trust the source of pkglist.
+
+set -euo pipefail
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Configuration
+PKG_LIST_FILE="$HOME/pkglist"
+PARU_FLAGS="--skipreview --needed --noconfirm"
+
+# Variables
+USE_PROXY=false
+PROXY_URL=""
+
+# Function to print status messages
+print_status() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Check if running on Steam Deck
+check_steamdeck() {
+    if [[ ! -d "/home/deck" ]] || [[ ! -f "/etc/os-release" ]] || ! grep -q "SteamOS" "/etc/os-release"; then
+        print_warning "This script is designed for Steam Deck running SteamOS Holo"
+    fi
+}
+
+# Check if required files exist
+check_requirements() {
+    if [[ ! -f "$PKG_LIST_FILE" ]]; then
+        print_error "Package list file not found: $PKG_LIST_FILE"
+        exit 1
+    fi
+    
+    if [[ ! -s "$PKG_LIST_FILE" ]]; then
+        print_error "Package list file is empty: $PKG_LIST_FILE"
+        exit 1
+    fi
+    
+    if ! command -v paru &> /dev/null; then
+        print_error "paru AUR helper is not installed. Please install it first."
+        exit 1
+    fi
+}
+
+# Ask user if they want to use proxy
+ask_proxy() {
+    echo "====================================="
+    echo "Proxy Configuration"
+    echo "====================================="
+    read -p "Do you want to use a proxy for package downloads? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        USE_PROXY=true
+        print_status "Proxy functionality enabled (implementation left to user)"
+        # TODO: Add your proxy implementation here
+        # Example structure:
+        # read -p "Enter proxy URL (e.g., http://proxy:port): " PROXY_URL
+        # export http_proxy="$PROXY_URL"
+        # export https_proxy="$PROXY_URL"
+        # print_status "Proxy set to: $PROXY_URL"
+    else
+        print_status "No proxy will be used"
+    fi
+}
+
+# Configure proxy (placeholder for user implementation)
+configure_proxy() {
+    if [[ "$USE_PROXY" == true ]]; then
+        print_status "Configuring proxy settings..."
+        # Placeholder - implement your proxy logic here
+        # For example:
+        # export ALL_PROXY=http://your-proxy:port
+        # export HTTP_PROXY=http://your-proxy:port
+        # export HTTPS_PROXY=http://your-proxy:port
+        print_status "Proxy configuration completed (actual implementation needed)"
+    fi
+}
+
+# Install packages from the list
+install_packages() {
+    print_status "Reading package list from $PKG_LIST_FILE"
+    
+    local total_packages=$(wc -l < "$PKG_LIST_FILE")
+    print_status "Found $total_packages packages to install"
+    
+    # Read packages into array
+    mapfile -t packages < "$PKG_LIST_FILE"
+    
+    # Install packages in batches to handle potential errors
+    local success_count=0
+    local fail_count=0
+    
+    for i in "${!packages[@]}"; do
+        local package="${packages[$i]}"
+        # Skip empty lines
+        [[ -z "$package" ]] && continue
+        
+        print_status "Installing package ($((i+1))/$total_packages): $package"
+        
+        if paru $PARU_FLAGS -S "$package"; then
+            ((success_count++))
+            print_status "✓ $package installed successfully"
+        else
+            ((fail_count++))
+            print_warning "✗ Failed to install $package"
+        fi
+    done
+    
+    print_status "Installation summary:"
+    print_status "  Successfully installed: $success_count"
+    print_status "  Failed to install: $fail_count"
+    print_status "  Total processed: $((success_count + fail_count))"
+}
+
+# Verify installed packages
+verify_installation() {
+    print_status "Verifying installed packages..."
+    
+    local missing_packages=()
+    while IFS= read -r package; do
+        [[ -z "$package" ]] && continue
+        if ! pacman -Q "$package" &>/dev/null; then
+            missing_packages+=("$package")
+        fi
+    done < "$PKG_LIST_FILE"
+    
+    if [[ ${#missing_packages[@]} -eq 0 ]]; then
+        print_status "All packages verified successfully"
+    else
+        print_warning "Some packages could not be verified:"
+        for pkg in "${missing_packages[@]}"; do
+            print_warning "  - $pkg"
+        done
+        print_warning "These packages may require manual installation"
+    fi
+}
+
+# Main execution
+main() {
+    print_status "Steam Deck Package Restorer"
+    echo "====================================="
+    
+    check_steamdeck
+    check_requirements
+    
+    # Show package list info
+    local pkg_count=$(wc -l < "$PKG_LIST_FILE")
+    echo "Package list contains $pkg_count packages:"
+    head -n 10 "$PKG_LIST_FILE"
+    if [[ $pkg_count -gt 10 ]]; then
+        echo "... and $((pkg_count - 10)) more packages"
+    fi
+    echo ""
+    
+    ask_proxy
+    
+    echo ""
+    echo "====================================="
+    echo "Package Installation Summary"
+    echo "====================================="
+    echo "- Source file: $PKG_LIST_FILE"
+    echo "- Total packages to install: $pkg_count"
+    echo "- Using proxy: $([ "$USE_PROXY" = true ] && echo "Yes" || echo "No")"
+    echo ""
+    
+    read -p "Proceed with installation? This may take a long time. (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        print_status "Installation cancelled"
+        exit 0
+    fi
+    
+    configure_proxy
+    
+    print_status "Starting package installation..."
+    install_packages
+    verify_installation
+    
+    print_status "Package restoration completed!"
+    print_status "Please restart your Steam Deck for all changes to take effect."
+    print_status "Check system logs if you encounter any issues with installed packages."
+}
+
+# Run main function
+main "$@"
+exit 0
