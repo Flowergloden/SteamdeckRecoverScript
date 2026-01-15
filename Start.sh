@@ -14,9 +14,9 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-PKG_LIST_FILE="$HOME/pkglist"
-PRE_HOOK_SCRIPT="$HOME/pre_hook.sh"
-POST_HOOK_SCRIPT="$HOME/post_hook.sh"
+PKG_LIST_FILE="./pkglist"
+PRE_HOOK_SCRIPT="./pre_hook.sh"
+POST_HOOK_SCRIPT="./post_hook.sh"
 PARU_FLAGS="--skipreview --needed --noconfirm"
 
 # Variables
