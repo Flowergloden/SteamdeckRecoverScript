@@ -1,7 +1,7 @@
 #!/bin/bash
 # Script: Init.sh
 # Purpose: Export current package list (including AUR) to ~/pkglist on Steam Deck (SteamOS Holo)
-#         Optionally initialize clash proxy software with encrypted input
+#         Optionally initialize clash proxy software
 # Author: System Admin
 # Date: $(date +%Y-%m-%d)
 # Warning: This script will overwrite any existing pkglist file in ~/
@@ -29,37 +29,6 @@ print_warning() {
 
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# Function to mask sensitive input
-get_masked_input() {
-    local prompt="$1"
-    local input=""
-    local char=""
-    
-    echo -n "$prompt"
-    
-    # Temporarily disable echoing
-    stty -echo
-    
-    while IFS= read -r -s -n1 char; do
-        if [[ $char == $'\n' ]] || [[ $char == $'\r' ]]; then
-            break
-        elif [[ $char == $'\177' ]] || [[ $char == $'\b' ]]; then  # Backspace
-            if [[ ${#input} -gt 0 ]]; then
-                input="${input%?}"
-                echo -ne '\b \b'
-            fi
-        else
-            input+="$char"
-            echo -n '*'
-        fi
-    done
-    
-    # Re-enable echoing
-    stty echo
-    echo  # New line after masked input
-    echo "$input"  # Return the actual input
 }
 
 # Check if running on Steam Deck
@@ -137,9 +106,9 @@ export CLASH_SECRET=''
 EOF
     fi
     
-    # Get proxy URL securely
+    # Get proxy URL
     local proxy_url
-    proxy_url=$(get_masked_input "Enter your Clash proxy URL (will be hidden): ")
+    read -p "Enter your Clash proxy URL: " proxy_url
     
     if [[ -z "$proxy_url" ]]; then
         print_warning "No proxy URL provided. Skipping proxy initialization."
@@ -167,30 +136,29 @@ main() {
     check_steamdeck
     check_dependencies
     
-    echo "This script will perform the following actions:"
+    echo "This script can perform the following actions:"
     echo "1. Export all installed packages (official + AUR) to:"
     echo "   $PKG_LIST_FILE"
-    echo "2. Optionally initialize Clash proxy software"
+    echo "2. Initialize Clash proxy software"
     echo ""
     echo "The package list file will contain one package name per line."
     echo ""
     
-    read -p "Continue with package list export? (y/N): " -n 1 -r
+    read -p "Do you want to export the package list? (Y/n): " -n 1 -r
     echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        print_status "Operation cancelled"
-        exit 0
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        # Create backup if file already exists
+        if [[ -f "$PKG_LIST_FILE" ]]; then
+            local backup_file="${PKG_LIST_FILE}_$(date +%Y%m%d_%H%M%S).bak"
+            mv "$PKG_LIST_FILE" "$backup_file"
+            print_status "Existing pkglist backed up to $backup_file"
+        fi
+        
+        get_package_list
+        verify_output
+    else
+        print_status "Skipping package list export"
     fi
-    
-    # Create backup if file already exists
-    if [[ -f "$PKG_LIST_FILE" ]]; then
-        local backup_file="${PKG_LIST_FILE}_$(date +%Y%m%d_%H%M%S).bak"
-        mv "$PKG_LIST_FILE" "$backup_file"
-        print_status "Existing pkglist backed up to $backup_file"
-    fi
-    
-    get_package_list
-    verify_output
     
     echo ""
     read -p "Do you want to initialize Clash proxy software? (y/N): " -n 1 -r
@@ -200,7 +168,9 @@ main() {
     fi
     
     print_status "Package list export and proxy initialization completed!"
-    print_status "You can now use this file to reinstall packages on another system."
+    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+        print_status "You can now use this file to reinstall packages on another system."
+    fi
 }
 
 # Run main function
