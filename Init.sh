@@ -117,13 +117,17 @@ EOF
     
     # Update the CLASH_URL in the .env file using proper quoting to handle special characters
     if [[ -f "$clash_env_file" ]]; then
-        # Use awk to safely replace the entire export line
+        # First, clear any existing CLASH_URL value completely, then add the new one
+        # This prevents parsing errors with special characters like '?' in URLs
         awk -v new_url="$proxy_url" '
         /^export CLASH_URL=/ { 
-            gsub(/^export CLASH_URL=.*/, "export CLASH_URL=\x27" new_url "\x27")
+            # Replace the entire line with the new URL value
+            print "export CLASH_URL=\x27" new_url "\x27"
+            next
         }
         /^export CLASH_SECRET=/ { 
-            gsub(/^export CLASH_SECRET=.*/, "export CLASH_SECRET=\x27\x27")
+            print "export CLASH_SECRET=\x27\x27"
+            next
         }
         { print }
         ' "$clash_env_file" > "${clash_env_file}.tmp" && mv "${clash_env_file}.tmp" "$clash_env_file"
