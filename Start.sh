@@ -14,9 +14,9 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-PKG_LIST_FILE="./pkglist"
-PRE_HOOK_SCRIPT="./Hooks/PreHook.sh"
-POST_HOOK_SCRIPT="./Hooks/PostHook.sh"
+PKG_LIST_FILE="$HOME/pkglist"
+PRE_HOOK_SCRIPT="$HOME/pre_hook.sh"
+POST_HOOK_SCRIPT="$HOME/post_hook.sh"
 PARU_FLAGS="--skipreview --needed --noconfirm"
 
 # Variables
@@ -166,33 +166,14 @@ install_packages() {
     local total_packages=$(wc -l < "$PKG_LIST_FILE")
     print_status "Found $total_packages packages to install"
     
-    # Read packages into array
-    mapfile -t packages < "$PKG_LIST_FILE"
+    # Pass the entire package list to paru at once
+    print_status "Installing all packages at once using paru..."
     
-    # Install packages in batches to handle potential errors
-    local success_count=0
-    local fail_count=0
-    
-    for i in "${!packages[@]}"; do
-        local package="${packages[$i]}"
-        # Skip empty lines
-        [[ -z "$package" ]] && continue
-        
-        print_status "Installing package ($((i+1))/$total_packages): $package"
-        
-        if paru $PARU_FLAGS -S "$package"; then
-            ((success_count++))
-            print_status "✓ $package installed successfully"
-        else
-            ((fail_count++))
-            print_warning "✗ Failed to install $package"
-        fi
-    done
-    
-    print_status "Installation summary:"
-    print_status "  Successfully installed: $success_count"
-    print_status "  Failed to install: $fail_count"
-    print_status "  Total processed: $((success_count + fail_count))"
+    if paru $PARU_FLAGS -S - < "$PKG_LIST_FILE"; then
+        print_status "All installable packages processed successfully"
+    else
+        print_warning "Some packages could not be installed (this is normal for unavailable packages)"
+    fi
 }
 
 # Verify installed packages
@@ -214,7 +195,7 @@ verify_installation() {
         for pkg in "${missing_packages[@]}"; do
             print_warning "  - $pkg"
         done
-        print_warning "These packages may require manual installation"
+        print_warning "These packages may require manual installation or are not available"
     fi
 }
 
