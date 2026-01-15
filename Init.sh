@@ -1,9 +1,11 @@
 #!/bin/bash
 # Script: Init.sh
 # Purpose: Export current package list (including AUR) to ~/pkglist on Steam Deck (SteamOS Holo)
+#         Optionally initialize clash proxy software with encrypted input
 # Author: System Admin
 # Date: $(date +%Y-%m-%d)
 # Warning: This script will overwrite any existing pkglist file in ~/
+#          Proxy initialization will modify ./clash/.env file
 
 set -euo pipefail
 
@@ -27,6 +29,37 @@ print_warning() {
 
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Function to mask sensitive input
+get_masked_input() {
+    local prompt="$1"
+    local input=""
+    local char=""
+    
+    echo -n "$prompt"
+    
+    # Temporarily disable echoing
+    stty -echo
+    
+    while IFS= read -r -s -n1 char; do
+        if [[ $char == $'\n' ]] || [[ $char == $'\r' ]]; then
+            break
+        elif [[ $char == $'\177' ]] || [[ $char == $'\b' ]]; then  # Backspace
+            if [[ ${#input} -gt 0 ]]; then
+                input="${input%?}"
+                echo -ne '\b \b'
+            fi
+        else
+            input+="$char"
+            echo -n '*'
+        fi
+    done
+    
+    # Re-enable echoing
+    stty echo
+    echo  # New line after masked input
+    echo "$input"  # Return the actual input
 }
 
 # Check if running on Steam Deck
@@ -83,21 +116,66 @@ verify_output() {
     fi
 }
 
+# Initialize clash proxy software
+initialize_clash_proxy() {
+    print_status "Initializing Clash proxy software..."
+    
+    local clash_env_file="./clash/.env"
+    
+    # Check if clash directory and env file exist
+    if [[ ! -d "./clash" ]]; then
+        print_error "Clash directory not found. Creating directory..."
+        mkdir -p "./clash"
+    fi
+    
+    # Create .env file if it doesn't exist
+    if [[ ! -f "$clash_env_file" ]]; then
+        print_status "Creating $clash_env_file file..."
+        cat > "$clash_env_file" << EOF
+export CLASH_URL=''
+export CLASH_SECRET=''
+EOF
+    fi
+    
+    # Get proxy URL securely
+    local proxy_url
+    proxy_url=$(get_masked_input "Enter your Clash proxy URL (will be hidden): ")
+    
+    if [[ -z "$proxy_url" ]]; then
+        print_warning "No proxy URL provided. Skipping proxy initialization."
+        return 0
+    fi
+    
+    # Update the CLASH_URL in the .env file
+    if [[ -f "$clash_env_file" ]]; then
+        sed -i "s|export CLASH_URL='.*'|export CLASH_URL='$proxy_url'|" "$clash_env_file"
+        sed -i "s|export CLASH_SECRET='.*'|export CLASH_SECRET=''|" "$clash_env_file"
+        
+        print_status "Updated CLASH_URL in $clash_env_file"
+        print_status "CLASH_SECRET has been cleared in $clash_env_file"
+    else
+        print_error "Failed to find $clash_env_file"
+        return 1
+    fi
+}
+
 # Main execution
 main() {
-    print_status "Steam Deck Package List Exporter"
-    echo "====================================="
+    print_status "Steam Deck Package List Exporter & Proxy Initializer"
+    echo "======================================================"
     
     check_steamdeck
     check_dependencies
     
-    echo "This script will export all installed packages (official + AUR) to:"
-    echo "  $PKG_LIST_FILE"
+    echo "This script will perform the following actions:"
+    echo "1. Export all installed packages (official + AUR) to:"
+    echo "   $PKG_LIST_FILE"
+    echo "2. Optionally initialize Clash proxy software"
     echo ""
-    echo "The file will contain one package name per line."
+    echo "The package list file will contain one package name per line."
     echo ""
     
-    read -p "Continue? (y/N): " -n 1 -r
+    read -p "Continue with package list export? (y/N): " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         print_status "Operation cancelled"
@@ -114,7 +192,14 @@ main() {
     get_package_list
     verify_output
     
-    print_status "Package list export completed!"
+    echo ""
+    read -p "Do you want to initialize Clash proxy software? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        initialize_clash_proxy
+    fi
+    
+    print_status "Package list export and proxy initialization completed!"
     print_status "You can now use this file to reinstall packages on another system."
 }
 
