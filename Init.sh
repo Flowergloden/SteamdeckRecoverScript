@@ -115,10 +115,18 @@ EOF
         return 0
     fi
     
-    # Update the CLASH_URL in the .env file
+    # Update the CLASH_URL in the .env file using proper quoting to handle special characters
     if [[ -f "$clash_env_file" ]]; then
-        sed -i "s|export CLASH_URL='.*'|export CLASH_URL='$proxy_url'|" "$clash_env_file"
-        sed -i "s|export CLASH_SECRET='.*'|export CLASH_SECRET=''|" "$clash_env_file"
+        # Use awk to safely replace the entire export line
+        awk -v new_url="$proxy_url" '
+        /^export CLASH_URL=/ { 
+            gsub(/^export CLASH_URL=.*/, "export CLASH_URL=\x27" new_url "\x27")
+        }
+        /^export CLASH_SECRET=/ { 
+            gsub(/^export CLASH_SECRET=.*/, "export CLASH_SECRET=\x27\x27")
+        }
+        { print }
+        ' "$clash_env_file" > "${clash_env_file}.tmp" && mv "${clash_env_file}.tmp" "$clash_env_file"
         
         print_status "Updated CLASH_URL in $clash_env_file"
         print_status "CLASH_SECRET has been cleared in $clash_env_file"
@@ -168,7 +176,7 @@ main() {
     fi
     
     print_status "Package list export and proxy initialization completed!"
-    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
         print_status "You can now use this file to reinstall packages on another system."
     fi
 }

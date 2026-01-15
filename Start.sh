@@ -148,30 +148,6 @@ configure_proxy() {
         # Check if clash directory and script exist
         if [[ -d "./clash" ]] && [[ -f "./clash/start.sh" ]]; then
             print_status "Starting clash proxy service..."
-            
-            # Reset CLASH_URL in .env file to avoid string parsing issues with special characters
-            if [[ -f "./clash/.env" ]]; then
-                print_status "Resetting CLASH_URL in .env file to prevent string parsing errors..."
-                
-                # Create a temporary file to hold the updated content
-                local temp_env_file=$(mktemp)
-                
-                # Process the .env file line by line
-                while IFS= read -r line || [[ -n "$line" ]]; do
-                    if [[ $line =~ ^CLASH_URL= ]]; then
-                        # Replace the CLASH_URL line with an empty value first to prevent parsing issues
-                        echo "CLASH_URL=''" >> "$temp_env_file"
-                    else
-                        echo "$line" >> "$temp_env_file"
-                    fi
-                done < "./clash/.env"
-                
-                # Move the temporary file to replace the original
-                mv "$temp_env_file" "./clash/.env"
-                
-                print_status "CLASH_URL reset completed"
-            fi
-            
             if ! sudo bash ./clash/start.sh; then
                 print_error "Failed to start clash proxy service"
                 exit 1
