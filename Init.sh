@@ -14,7 +14,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-PKG_LIST_FILE="$HOME/pkglist"
+PKG_LIST_FILE="./pkglist"
 
 # Function to print status messages
 print_status() {
