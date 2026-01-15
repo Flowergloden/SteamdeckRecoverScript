@@ -14,9 +14,9 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-PKG_LIST_FILE="./pkglist"
-PRE_HOOK_SCRIPT="./pre_hook.sh"
-POST_HOOK_SCRIPT="./post_hook.sh"
+PKG_LIST_FILE="$HOME/pkglist"
+PRE_HOOK_SCRIPT="$HOME/pre_hook.sh"
+POST_HOOK_SCRIPT="$HOME/post_hook.sh"
 PARU_FLAGS="--skipreview --needed --noconfirm"
 
 # Variables
@@ -134,28 +134,60 @@ ask_proxy() {
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         USE_PROXY=true
-        print_status "Proxy functionality enabled (implementation left to user)"
-        # TODO: Add your proxy implementation here
-        # Example structure:
-        # read -p "Enter proxy URL (e.g., http://proxy:port): " PROXY_URL
-        # export http_proxy="$PROXY_URL"
-        # export https_proxy="$PROXY_URL"
-        # print_status "Proxy set to: $PROXY_URL"
+        print_status "Proxy functionality enabled"
     else
         print_status "No proxy will be used"
     fi
 }
 
-# Configure proxy (placeholder for user implementation)
+# Configure proxy by starting clash and enabling proxy
 configure_proxy() {
     if [[ "$USE_PROXY" == true ]]; then
         print_status "Configuring proxy settings..."
-        # Placeholder - implement your proxy logic here
-        # For example:
-        # export ALL_PROXY=http://your-proxy:port
-        # export HTTP_PROXY=http://your-proxy:port
-        # export HTTPS_PROXY=http://your-proxy:port
-        print_status "Proxy configuration completed (actual implementation needed)"
+        
+        # Check if clash directory and script exist
+        if [[ -d "./clash" ]] && [[ -f "./clash/start.sh" ]]; then
+            print_status "Starting clash proxy service..."
+            if ! sudo bash ./clash/start.sh; then
+                print_error "Failed to start clash proxy service"
+                exit 1
+            fi
+            
+            print_status "Loading clash environment variables..."
+            if [[ -f "/etc/profile.d/clash.sh" ]]; then
+                source /etc/profile.d/clash.sh
+            else
+                print_warning "/etc/profile.d/clash.sh not found, skipping"
+            fi
+            
+            print_status "Enabling proxy..."
+            if ! proxyon; then
+                print_error "Failed to enable proxy"
+                exit 1
+            fi
+            
+            print_status "Proxy configured and enabled successfully"
+        else
+            print_error "Clash directory or start.sh script not found"
+            print_error "Expected path: ./clash/start.sh"
+            exit 1
+        fi
+    fi
+}
+
+# Disable proxy by turning it off
+disable_proxy() {
+    if [[ "$USE_PROXY" == true ]]; then
+        print_status "Disabling proxy..."
+        if command -v proxyoff &> /dev/null; then
+            if ! proxyoff; then
+                print_warning "Failed to disable proxy"
+            else
+                print_status "Proxy disabled successfully"
+            fi
+        else
+            print_warning "proxyoff command not found, skipping"
+        fi
     fi
 }
 
@@ -256,6 +288,9 @@ main() {
     
     # Execute post-installation hook
     execute_post_hook
+    
+    # Disable proxy if it was enabled
+    disable_proxy
     
     # Re-enable readonly mode after installation
     enable_readonly_mode
