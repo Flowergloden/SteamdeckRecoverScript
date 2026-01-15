@@ -267,9 +267,9 @@ main() {
     echo "- Post-installation hook: $([ -f "$POST_HOOK_SCRIPT" ] && echo "Yes" || echo "No")"
     echo ""
     
-    read -p "Proceed with installation? This may take a long time. (y/N): " -n 1 -r
+    read -p "Proceed with installation? This may take a long time. (Y/n): " -n 1 -r
     echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    if [[ $REPLY =~ ^[Nn]$ ]]; then
         print_status "Installation cancelled"
         exit 0
     fi
